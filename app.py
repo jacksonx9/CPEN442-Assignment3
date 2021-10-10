@@ -156,7 +156,7 @@ class Assignment3VPN:
                     # Processing the protocol message
                     self.prtcl.ProcessReceivedProtocolMessage(cipher_text)
 
-                # Otherwise, decrypting and showing the messaage
+                # Otherwise, decrypting and showing the message
                 else:
                     plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
                     self._AppendMessage("Other: {}".format(plain_text.decode()))
