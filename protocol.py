@@ -1,11 +1,11 @@
 from random import randint
 from sys import maxsize
-from Crypto.Cipher import AES
+# from Crypto.Cipher import AES
 from uuid import uuid4
-from enum import Enum
+from enum import IntEnum
 import json
 
-class ProtocolState(Enum):
+class ProtocolState(IntEnum):
     UNKNOWN = 0
     SENT_INIT = 1
     RECEIVED_INIT_REPLY = 2
@@ -13,7 +13,7 @@ class ProtocolState(Enum):
     SENT_INIT_REPLY = 4
     END = 5
 
-class MsgType(Enum):
+class MsgType(IntEnum):
     UNKNOWN = 0
     INIT = 1
     INIT_REPLY = 2
@@ -25,15 +25,14 @@ class MsgType(Enum):
 class Protocol:
     # Initializer (Called from app.py)
     # TODO: MODIFY ARGUMENTS AND LOGIC AS YOU SEEM FIT
-    def __init__(self, sharedKey, name):
+    def __init__(self):
         self._key = None
         self.g = 627 # Public knowledge.
         self.p = 941 # Public knowledge.
         self.private_key = randint(0, maxsize)
-        self.shared_key = sharedKey
-        self.name = name
         self.state = ProtocolState.UNKNOWN
         self.sent_nonce = None
+        self._name = "Server"
 
 
     # Creating the initial message of your protocol (to be send to the other party to bootstrap the protocol)
@@ -41,24 +40,28 @@ class Protocol:
     def GetProtocolInitiationMessage(self):
         nonce = self._makeNewNonce()
         self.sent_nonce = nonce
-        payload = {"nonce": nonce, "name": self.name, "type": MsgType.INIT}
+        payload = {"nonce": nonce, "name": self._name, "type": MsgType.INIT}
         return json.dumps(payload)
     
     def setProtocolState(self, state):
         self.state = state
 
     def _makeNewNonce(self):
-        return uuid4().bytes + uuid4().bytes + uuid4().bytes + uuid4().bytes 
+        return randint(0, maxsize)
+        # return uuid4().bytes + uuid4().bytes + uuid4().bytes + uuid4().bytes 
 
     # Checking if a received message is part of your protocol (called from app.py)
     # TODO: IMPLMENET THE LOGIC
     def IsMessagePartOfProtocol(self, message):
-        payload = {}
-        type = payload["type"]
-        return self._isProtocolType(type) 
+        print("aaa", message)
+        # print(message[])
+        message_type = message["type"]
+        return self._isProtocolType(message_type) 
     
     def _isProtocolType(self, type):
-    	return type in set(MsgType.INIT, MsgType.INIT_REPLY, MsgType.END)
+    	# return IntEnum(type) in set(MsgType.INIT, MsgType.INIT_REPLY, MsgType.END)
+    	return type in range(1,4)
+    	# return type in set(MsgType.INIT, MsgType.INIT_REPLY, MsgType.END)
     
     """
     Message formats in JSON 
@@ -100,9 +103,9 @@ class Protocol:
     def _getNextState(self):
         if self.state == ProtocolState.UNKNOWN:
             # TODO dont hardcode these strings
-            if self.name == "client":
+            if self._name == "client":
                 return ProtocolState.RECEIVED_INIT
-            elif self.name == "server":
+            elif self._name == "server":
                 return ProtocolState.SENT_INIT
             else:
                 raise Exception("Invalid name")
@@ -123,8 +126,28 @@ class Protocol:
     # THROW EXCEPTION IF AUTHENTICATION FAILS
     def ProcessReceivedProtocolMessage(self, message):
       	#self._isValidMsgFormat(type, payload)
+        message_type = message["type"]
+        print("in Process", message)
+        if message_type == MsgType.INIT: 
+            # Recieve “I’m Client “ + R_A
+            # Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
+            pass
+        elif message_type == MsgType.INIT_REPLY:
+            # Recieve Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
+            # Respond E(“Client”+ g^a mod p + Rb, Kab)
+            pass
+        else:
+            # Recieve E(“Client”+ g^a mod p + Rb, Kab)
+            pass
+
+
+    def SetSecret(self, key):
+        self._shared_key = key
         pass
 
+    def SetName(self, name):
+        self._name = name
+        pass
 
     # Setting the key for the current session
     # TODO: MODIFY AS YOU SEEM FIT
@@ -139,7 +162,7 @@ class Protocol:
     def EncryptAndProtectMessage(self, plain_text):
         cipher_text = plain_text
         # use if you want 
-        # cipher = AES.new(self.sharedKey, AES.MODE_CTR, nonce=nonce)
+        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
         # cipher.encrypt_and_digest(plain_text)
         # cipher.decrypt(ciphertext)
         return cipher_text

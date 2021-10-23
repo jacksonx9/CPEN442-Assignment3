@@ -6,6 +6,7 @@ import pygubu
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
+import json
 
 # local import from "protocol.py"
 from protocol import Protocol
@@ -68,16 +69,20 @@ class Assignment3VPN:
     
     # Handle client mode selection
     def ClientModeSelected(self):
+        self.prtcl.SetName("Client")
         self.hostName.set("localhost")
 
 
     # Handle sever mode selection
     def ServerModeSelected(self):
+        self.prtcl.SetName("Server")
         pass
 
 
     # Create a TCP connection between the client and the server
     def CreateConnection(self):
+        self.prtcl.SetSecret(self.sharedSecret.get())
+        print(self.sharedSecret.get())
         # Change button states
         self._ChangeConnectionMode()
         
@@ -142,6 +147,7 @@ class Assignment3VPN:
             try:
                 # Receiving all the data
                 cipher_text = self.conn.recv(4096)
+                print("Ciphertext is:", cipher_text)
 
                 # Check if socket is still open
                 if cipher_text == None or len(cipher_text) == 0:
@@ -150,14 +156,20 @@ class Assignment3VPN:
 
                 # Checking if the received message is part of your protocol
                 # TODO: MODIFY THE INPUT ARGUMENTS AND LOGIC IF NECESSARY
-                if self.prtcl.IsMessagePartOfProtocol(cipher_text):
+                print("about to decode")
+                decoded_message = json.loads(cipher_text.decode())
+                print(decoded_message)
+                if self.prtcl.IsMessagePartOfProtocol(decoded_message):
+                    print("path1")
                     # Disabling the button to prevent repeated clicks
                     self.secureButton["state"] = "disabled"
                     # Processing the protocol message
-                    self.prtcl.ProcessReceivedProtocolMessage(cipher_text)
+                    
+                    self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
 
                 # Otherwise, decrypting and showing the message
                 else:
+                    print("path2")
                     plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
                     self._AppendMessage("Other: {}".format(plain_text.decode()))
                     
