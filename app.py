@@ -166,15 +166,17 @@ class Assignment3VPN:
                     # Processing the protocol message
                     
                     next_message = self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
-                    print("next_message ", next_message)
-                    self._SendMessage(next_message)
+
+                    if next_message is not None:
+                        print("next_message ", next_message)
+                        print("Right before sending message")
+                        self.conn.send(next_message.encode())
 
                 # Otherwise, decrypting and showing the message
                 else:
-                    print("path2")
                     plain_text = self.prtcl.DecryptAndVerifyMessage(decoded_message)
                     self._AppendMessage("Other: {}".format(plain_text))
-                    
+     
             except Exception as e:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
                 return False
@@ -195,7 +197,8 @@ class Assignment3VPN:
 
         # TODO: THIS IS WHERE YOU SHOULD IMPLEMENT THE START OF YOUR MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL, MODIFY AS YOU SEEM FIT
         init_message = self.prtcl.GetProtocolInitiationMessage()
-        self._SendMessage(init_message)
+        print("Right before sending message")
+        self.conn.send(init_message.encode())
 
 
     # Called when SendMessage button is clicked

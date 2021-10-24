@@ -1,7 +1,6 @@
 from random import randint
 from sys import maxsize
 from Cryptodome.Cipher import AES
-from uuid import uuid4
 from enum import IntEnum
 import json
 import hashlib
@@ -12,65 +11,71 @@ class MsgType(IntEnum):
     INIT_REPLY = 2
     END = 3
     GENERAL = 4
-    
-    
 
 class Protocol:
     # Initializer (Called from app.py)
     # TODO: MODIFY ARGUMENTS AND LOGIC AS YOU SEEM FIT
     def __init__(self):
-        self._key = None
         self.g = 627 # Public knowledge.
         self.p = 941 # Public knowledge.
         self.private_key = randint(0, maxsize)
         self._sent_nonce = None
         self._name = "server"
-        self.session_key = -1
+        self._session_key = -1
 
 
     # Creating the initial message of your protocol (to be send to the other party to bootstrap the protocol)
     # TODO: IMPLEMENT THE LOGIC (MODIFY THE INPUT ARGUMENTS AS YOU SEEM FIT)
     def GetProtocolInitiationMessage(self):
+        print("GetProtocolInitiationMessage")
+
         nonce = randint(0, maxsize)
         self._sent_nonce = nonce
         payload = {"nonce": nonce, "name": self._name, "type": MsgType.INIT}
+        
         return json.dumps(payload)
 
     def GetProtocolInitResponseMessage(self, message):
+        print("GetProtocolInitResponseMessage")
         nonce = randint(0, maxsize)
         self._sent_nonce = nonce
         dh_val = pow(self.g, self.private_key, self.p)
-        encrypted_payload = self._EncryptWithSymmetric(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
-        payload = {"nonce": nonce, "encrypted": encrypted_payload, "type": MsgType.INIT_REPLY}
-        return json.dumps(payload)
+
+        payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}), MsgType.INIT_REPLY, False, nonce)
+
+        return payload
 
 
     def GetProtocolEndMessage(self, message):
-        decoded_payload = json.loads(self._DecryptWithSymmetric(message["encrypted"]))
+        print("GetProtocolEndMessage")
+        decoded_payload = json.loads(self.DecryptAndVerifyMessage(message, False))
+
         if self._sent_nonce != decoded_payload["nonce"]:
-            return None
+            raise ValueError("INTEGRITY ERROR; GetProtocolEndMessage")
 
         dh_val = pow(self.g, self.private_key, self.p)
-        self.session_key = pow(decoded_payload["dh"], self.private_key, self.p)
-        print(self.session_key)
-        encrypted_payload = self._EncryptWithSymmetric(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
-        payload = {"encrypted": encrypted_payload, "type": MsgType.END}
-        return json.dumps(payload)
+        self.SetSessionKey(pow(decoded_payload["dh"], self.private_key, self.p))
+        print(self._session_key)
+        payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}), MsgType.END, False)
+        return payload
 
     def VerifyProtocolEndMessage(self, message):
-        decoded_payload = json.loads(self._DecryptWithSymmetric(message["encrypted"]))
+        print("VerifyProtocolEndMessage")
+        decoded_payload = json.loads(self.DecryptAndVerifyMessage(message, False))
+
         if self._sent_nonce != decoded_payload["nonce"]:
-            return None
+            raise ValueError("INTEGRITY ERROR; VerifyProtocolEndMessage")
+
         print("heregang")
-        self.session_key = pow(decoded_payload["dh"], self.private_key, self.p)
-        print(self.session_key)
+        self.SetSessionKey(pow(decoded_payload["dh"], self.private_key, self.p))
+        print(self._session_key)
     
 
     # Checking if a received message is part of your protocol (called from app.py)
     # TODO: IMPLMENET THE LOGIC
     def IsMessagePartOfProtocol(self, message):
         print("aaa", message)
-        # print(message[])
+        print(message)
         message_type = message["type"]
         return self._isProtocolType(message_type) 
     
@@ -129,70 +134,52 @@ class Protocol:
             return self.GetProtocolEndMessage(message)
         else:
             # Recieve E(“client”+ g^a mod p + Rb, Kab)
-            return self.VerifyProtocolEndMessage(message)
+            self.VerifyProtocolEndMessage(message)
 
 
     def SetSecret(self, key):
         self._shared_key = hashlib.md5(key.encode()).digest()
-        pass
 
     def SetName(self, name):
         self._name = name
-        pass
 
     # Setting the key for the current session
     # TODO: MODIFY AS YOU SEEM FIT
     def SetSessionKey(self, key):
-        self._key = key
-        pass
-
-
-    def _EncryptWithSymmetric(self, plain_text):
-        cipher_text = plain_text
-        # Only encrypt is session key exists
-        # use if you want 
-        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
-        # cipher.encrypt_and_digest(plain_text)
-        return cipher_text
-
-    def _DecryptWithSymmetric(self, cipher_text):
-        # Only encrypt is session key exists
-        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
-        # print(cipher.decrypt(cipher_text))
-        #cipher.decrypt(cipher_text)
-        return cipher_text
-
+        self._session_key = hashlib.md5(str(key).encode()).digest()
 
     # Encrypting messages
     # TODO: IMPLEMENT ENCRYPTION WITH THE SESSION KEY (ALSO INCLUDE ANY NECESSARY INFO IN THE ENCRYPTED MESSAGE FOR INTEGRITY PROTECTION)
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
-    def EncryptAndProtectMessage(self, plain_text):
-        
+    def EncryptAndProtectMessage(self, plain_text, type = MsgType.GENERAL, use_session_key = True, nonce = None):
         # Only encrypt if message type in payload is defined and INIT or END etc.
         # use if you want 
-        print("EncryptAndProtectMessage: here")
-        cipher = AES.new(self._shared_key, AES.MODE_EAX)
-        print("EncryptAndProtectMessage: made cipher")
+        key = self._session_key if use_session_key else self._shared_key
+        cipher = AES.new(key, AES.MODE_EAX)
         encoded_message, tag = cipher.encrypt_and_digest(plain_text.encode())
 
-        cipher_text = {"encrypted": b64encode(encoded_message).decode('utf-8'), "nonce": b64encode(cipher.nonce).decode('utf-8'), "tag": b64encode(tag).decode('utf-8'), "type": MsgType.GENERAL}
-        # cipher_text = {"encrypted": str(encoded_message, errors='ignore'), "nonce": "cipher.nonce.decode()", "tag": "tag.decode()", "type": MsgType.GENERAL}
-        print("EncryptAndProtectMessage: made ciphertext")
+        cipher_text = {"encrypted": b64encode(encoded_message).decode('utf-8'), "aes_nonce": b64encode(cipher.nonce).decode('utf-8'), "tag": b64encode(tag).decode('utf-8'), "type": type}
+        
+        if nonce is not None:
+            cipher_text["nonce"] = nonce
         return json.dumps(cipher_text)
 
 
     # Decrypting and verifying messages
     # TODO: IMPLEMENT DECRYPTION AND INTEGRITY CHECK WITH THE SESSION KEY
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
-    def DecryptAndVerifyMessage(self, cipher_text_json):
+    def DecryptAndVerifyMessage(self, cipher_text_json, use_session_key = True):
         encrypted_message = b64decode(cipher_text_json["encrypted"])
-        nonce = b64decode(cipher_text_json["nonce"])
+        aes_nonce = b64decode(cipher_text_json["aes_nonce"])
         tag = b64decode(cipher_text_json["tag"])
 
-        cipher = AES.new(self._shared_key, AES.MODE_EAX, nonce=nonce)
+        key = self._session_key if use_session_key else self._shared_key
+
+        cipher = AES.new(key, AES.MODE_EAX, nonce=aes_nonce)
         plain_text = cipher.decrypt(encrypted_message)
+
         try:
             cipher.verify(tag)
             return plain_text.decode()
         except ValueError:
-            raise ValueError()
+            raise ValueError("INTEGRITY VIOLATION; Invalid tag")
