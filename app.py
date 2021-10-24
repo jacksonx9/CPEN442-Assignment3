@@ -165,7 +165,9 @@ class Assignment3VPN:
                     self.secureButton["state"] = "disabled"
                     # Processing the protocol message
                     
-                    self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
+                    next_message = self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
+                    print("next_message ", next_message)
+                    self._SendMessage(next_message)
 
                 # Otherwise, decrypting and showing the message
                 else:

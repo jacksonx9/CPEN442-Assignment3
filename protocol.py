@@ -42,6 +42,23 @@ class Protocol:
         self.sent_nonce = nonce
         payload = {"nonce": nonce, "name": self._name, "type": MsgType.INIT}
         return json.dumps(payload)
+
+    def GetProtocolInitResponseMessage(self, message):
+        nonce = self._makeNewNonce()
+        self.sent_nonce = nonce
+        dh_val = pow(self.g, self.private_key, self.p)
+        encrypted_payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
+        payload = {"nonce": nonce, "encrypted": encrypted_payload, "type": MsgType.INIT_REPLY}
+        return json.dumps(payload)
+
+
+    def GetProtocolEndMessage(self, message):
+        decoded_payload = json.loads(message["encrypted"])
+        dh_val = pow(self.g, self.private_key, self.p)
+        session_key = pow(decoded_payload["dh"], self.private_key, self.p)
+        encrypted_payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
+        payload = {"encrypted": encrypted_payload, "type": MsgType.INIT_REPLY}
+        return json.dumps(payload)
     
     def setProtocolState(self, state):
         self.state = state
@@ -128,13 +145,18 @@ class Protocol:
       	#self._isValidMsgFormat(type, payload)
         message_type = message["type"]
         print("in Process", message)
-        if message_type == MsgType.INIT: 
+        print("in Process2", message_type == MsgType.INIT)
+        if message_type == MsgType.INIT:
+            print("Nonce1 is ", message["nonce"])
+            return self.GetProtocolInitResponseMessage(message)
             # Recieve “I’m Client “ + R_A
             # Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
             pass
         elif message_type == MsgType.INIT_REPLY:
             # Recieve Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
             # Respond E(“Client”+ g^a mod p + Rb, Kab)
+            print("Nonce2 is ", message["nonce"])
+
             pass
         else:
             # Recieve E(“Client”+ g^a mod p + Rb, Kab)
@@ -156,11 +178,22 @@ class Protocol:
         pass
 
 
+    def EncryptWithSymmetric(self, plain_text):
+        cipher_text = plain_text
+        # Only encrypt is session key exists
+        # use if you want 
+        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
+        # cipher.encrypt_and_digest(plain_text)
+        # cipher.decrypt(ciphertext)
+        return cipher_text
+
+
     # Encrypting messages
     # TODO: IMPLEMENT ENCRYPTION WITH THE SESSION KEY (ALSO INCLUDE ANY NECESSARY INFO IN THE ENCRYPTED MESSAGE FOR INTEGRITY PROTECTION)
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
     def EncryptAndProtectMessage(self, plain_text):
         cipher_text = plain_text
+        # Only encrypt is session key exists
         # use if you want 
         # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
         # cipher.encrypt_and_digest(plain_text)
