@@ -1,14 +1,17 @@
 from random import randint
 from sys import maxsize
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 from uuid import uuid4
 from enum import IntEnum
 import json
+import hashlib
+from base64 import b64encode, b64decode
 
 class MsgType(IntEnum):
     INIT = 1
     INIT_REPLY = 2
     END = 3
+    GENERAL = 4
     
     
 
@@ -72,8 +75,8 @@ class Protocol:
         return self._isProtocolType(message_type) 
     
     def _isProtocolType(self, type):
-    	# return IntEnum(type) in set(MsgType.INIT, MsgType.INIT_REPLY, MsgType.END)
-    	return type in range(1,4)
+    	return MsgType(type) in {MsgType.INIT, MsgType.INIT_REPLY, MsgType.END}
+    	# return type in range(1,4)
     	# return type in set(MsgType.INIT, MsgType.INIT_REPLY, MsgType.END)
     
     """
@@ -130,7 +133,7 @@ class Protocol:
 
 
     def SetSecret(self, key):
-        self._shared_key = key
+        self._shared_key = hashlib.md5(key.encode()).digest()
         pass
 
     def SetName(self, name):
@@ -164,18 +167,32 @@ class Protocol:
     # TODO: IMPLEMENT ENCRYPTION WITH THE SESSION KEY (ALSO INCLUDE ANY NECESSARY INFO IN THE ENCRYPTED MESSAGE FOR INTEGRITY PROTECTION)
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
     def EncryptAndProtectMessage(self, plain_text):
-        cipher_text = plain_text
+        
         # Only encrypt if message type in payload is defined and INIT or END etc.
         # use if you want 
-        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
-        # cipher.encrypt_and_digest(plain_text)
-        # cipher.decrypt(ciphertext)
-        return cipher_text
+        print("EncryptAndProtectMessage: here")
+        cipher = AES.new(self._shared_key, AES.MODE_EAX)
+        print("EncryptAndProtectMessage: made cipher")
+        encoded_message, tag = cipher.encrypt_and_digest(plain_text.encode())
+
+        cipher_text = {"encrypted": b64encode(encoded_message).decode('utf-8'), "nonce": b64encode(cipher.nonce).decode('utf-8'), "tag": b64encode(tag).decode('utf-8'), "type": MsgType.GENERAL}
+        # cipher_text = {"encrypted": str(encoded_message, errors='ignore'), "nonce": "cipher.nonce.decode()", "tag": "tag.decode()", "type": MsgType.GENERAL}
+        print("EncryptAndProtectMessage: made ciphertext")
+        return json.dumps(cipher_text)
 
 
     # Decrypting and verifying messages
     # TODO: IMPLEMENT DECRYPTION AND INTEGRITY CHECK WITH THE SESSION KEY
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
-    def DecryptAndVerifyMessage(self, cipher_text):
-        plain_text = cipher_text
-        return plain_text
+    def DecryptAndVerifyMessage(self, cipher_text_json):
+        encrypted_message = b64decode(cipher_text_json["encrypted"])
+        nonce = b64decode(cipher_text_json["nonce"])
+        tag = b64decode(cipher_text_json["tag"])
+
+        cipher = AES.new(self._shared_key, AES.MODE_EAX, nonce=nonce)
+        plain_text = cipher.decrypt(encrypted_message)
+        try:
+            cipher.verify(tag)
+            return plain_text.decode()
+        except ValueError:
+            raise ValueError()
