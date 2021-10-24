@@ -69,13 +69,13 @@ class Assignment3VPN:
     
     # Handle client mode selection
     def ClientModeSelected(self):
-        self.prtcl.SetName("Client")
+        self.prtcl.SetName("client")
         self.hostName.set("localhost")
 
 
     # Handle sever mode selection
     def ServerModeSelected(self):
-        self.prtcl.SetName("Server")
+        self.prtcl.SetName("server")
         pass
 
 

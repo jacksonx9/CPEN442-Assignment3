@@ -1,24 +1,14 @@
 from random import randint
 from sys import maxsize
-# from Crypto.Cipher import AES
+from Crypto.Cipher import AES
 from uuid import uuid4
 from enum import IntEnum
 import json
 
-class ProtocolState(IntEnum):
-    UNKNOWN = 0
-    SENT_INIT = 1
-    RECEIVED_INIT_REPLY = 2
-    RECEIVED_INIT = 3
-    SENT_INIT_REPLY = 4
-    END = 5
-
 class MsgType(IntEnum):
-    UNKNOWN = 0
     INIT = 1
     INIT_REPLY = 2
     END = 3
-    REGULAR = 4
     
     
 
@@ -30,42 +20,48 @@ class Protocol:
         self.g = 627 # Public knowledge.
         self.p = 941 # Public knowledge.
         self.private_key = randint(0, maxsize)
-        self.state = ProtocolState.UNKNOWN
-        self.sent_nonce = None
-        self._name = "Server"
+        self._sent_nonce = None
+        self._name = "server"
+        self.session_key = -1
 
 
     # Creating the initial message of your protocol (to be send to the other party to bootstrap the protocol)
     # TODO: IMPLEMENT THE LOGIC (MODIFY THE INPUT ARGUMENTS AS YOU SEEM FIT)
     def GetProtocolInitiationMessage(self):
-        nonce = self._makeNewNonce()
-        self.sent_nonce = nonce
+        nonce = randint(0, maxsize)
+        self._sent_nonce = nonce
         payload = {"nonce": nonce, "name": self._name, "type": MsgType.INIT}
         return json.dumps(payload)
 
     def GetProtocolInitResponseMessage(self, message):
-        nonce = self._makeNewNonce()
-        self.sent_nonce = nonce
+        nonce = randint(0, maxsize)
+        self._sent_nonce = nonce
         dh_val = pow(self.g, self.private_key, self.p)
-        encrypted_payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
+        encrypted_payload = self._EncryptWithSymmetric(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
         payload = {"nonce": nonce, "encrypted": encrypted_payload, "type": MsgType.INIT_REPLY}
         return json.dumps(payload)
 
 
     def GetProtocolEndMessage(self, message):
-        decoded_payload = json.loads(message["encrypted"])
-        dh_val = pow(self.g, self.private_key, self.p)
-        session_key = pow(decoded_payload["dh"], self.private_key, self.p)
-        encrypted_payload = self.EncryptAndProtectMessage(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
-        payload = {"encrypted": encrypted_payload, "type": MsgType.INIT_REPLY}
-        return json.dumps(payload)
-    
-    def setProtocolState(self, state):
-        self.state = state
+        decoded_payload = json.loads(self._DecryptWithSymmetric(message["encrypted"]))
+        if self._sent_nonce != decoded_payload["nonce"]:
+            return None
 
-    def _makeNewNonce(self):
-        return randint(0, maxsize)
-        # return uuid4().bytes + uuid4().bytes + uuid4().bytes + uuid4().bytes 
+        dh_val = pow(self.g, self.private_key, self.p)
+        self.session_key = pow(decoded_payload["dh"], self.private_key, self.p)
+        print(self.session_key)
+        encrypted_payload = self._EncryptWithSymmetric(json.dumps({"name": self._name, "nonce": message["nonce"], "dh": dh_val}))
+        payload = {"encrypted": encrypted_payload, "type": MsgType.END}
+        return json.dumps(payload)
+
+    def VerifyProtocolEndMessage(self, message):
+        decoded_payload = json.loads(self._DecryptWithSymmetric(message["encrypted"]))
+        if self._sent_nonce != decoded_payload["nonce"]:
+            return None
+        print("heregang")
+        self.session_key = pow(decoded_payload["dh"], self.private_key, self.p)
+        print(self.session_key)
+    
 
     # Checking if a received message is part of your protocol (called from app.py)
     # TODO: IMPLMENET THE LOGIC
@@ -98,45 +94,18 @@ class Protocol:
             is_valid_nonce = payload["nonce"].isnumeric()
             encrypted = payload["encrypted"]
             is_valid_reply_name = encrypted["name"] == "client" or encrypted["name"] == "server"
-            is_valid_reply_nonce = encrypted["nonce"].isnumeric() and int(encrypted["nonce"]) == self.sent_nonce
+            is_valid_reply_nonce = encrypted["nonce"].isnumeric() and int(encrypted["nonce"]) == self._sent_nonce
             is_valid_dh = encrypted["dh"].isnumeric()
             
             validations.extend([is_valid_nonce, is_valid_reply_name, is_valid_reply_name, is_valid_dh])
         elif type == MsgType.END:
             encrypted = payload["encrypted"]
             is_valid_reply_name = encrypted["name"] == "client" or encrypted["name"] == "server"
-            is_valid_reply_nonce = encrypted["nonce"].isnumeric() and int(encrypted["nonce"]) == self.sent_nonce
+            is_valid_reply_nonce = encrypted["nonce"].isnumeric() and int(encrypted["nonce"]) == self._sent_nonce
           	
             validations.extend([is_valid_reply_name, is_valid_reply_nonce])
 		#TODO: continue one guys!
         return all(validations)
-
-            
-
-
-    def _isValidStateTransition(self, type):
-        pass
-    
-    def _getNextState(self):
-        if self.state == ProtocolState.UNKNOWN:
-            # TODO dont hardcode these strings
-            if self._name == "client":
-                return ProtocolState.RECEIVED_INIT
-            elif self._name == "server":
-                return ProtocolState.SENT_INIT
-            else:
-                raise Exception("Invalid name")
- 
-        if self.state == ProtocolState.SENT_INIT:
-            return ProtocolState.RECEIVED_INIT_REPLY
-        elif self.state == ProtocolState.RECEIVED_INIT_REPLY:
-            return ProtocolState.END
-        elif self.state == ProtocolState.RECEIVED_INIT:
-            return ProtocolState.SENT_INIT_REPLY
-        elif self.state == ProtocolState.SENT_INIT_REPLY:
-            return ProtocolState.END
-        else:
-            raise Exception("Invalid current protocol state")
 
     # Processing protocol message
     # TODO: IMPLMENET THE LOGIC (CALL SetSessionKey ONCE YOU HAVE THE KEY ESTABLISHED)
@@ -147,20 +116,17 @@ class Protocol:
         print("in Process", message)
         print("in Process2", message_type == MsgType.INIT)
         if message_type == MsgType.INIT:
+            # Recieve “I’m client “ + R_A
+            # Respond with Rb, E(“server”+ g^b mod p + Ra, Kab)
             print("Nonce1 is ", message["nonce"])
             return self.GetProtocolInitResponseMessage(message)
-            # Recieve “I’m Client “ + R_A
-            # Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
-            pass
         elif message_type == MsgType.INIT_REPLY:
-            # Recieve Respond with Rb, E(“Server”+ g^b mod p + Ra, Kab)
-            # Respond E(“Client”+ g^a mod p + Rb, Kab)
-            print("Nonce2 is ", message["nonce"])
-
-            pass
+            # Recieve Respond with Rb, E(“server”, g^b mod p, Ra, Kab)
+            # Respond E(“client”, g^a mod p, Rb, Kab)
+            return self.GetProtocolEndMessage(message)
         else:
-            # Recieve E(“Client”+ g^a mod p + Rb, Kab)
-            pass
+            # Recieve E(“client”+ g^a mod p + Rb, Kab)
+            return self.VerifyProtocolEndMessage(message)
 
 
     def SetSecret(self, key):
@@ -178,13 +144,19 @@ class Protocol:
         pass
 
 
-    def EncryptWithSymmetric(self, plain_text):
+    def _EncryptWithSymmetric(self, plain_text):
         cipher_text = plain_text
         # Only encrypt is session key exists
         # use if you want 
         # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
         # cipher.encrypt_and_digest(plain_text)
-        # cipher.decrypt(ciphertext)
+        return cipher_text
+
+    def _DecryptWithSymmetric(self, cipher_text):
+        # Only encrypt is session key exists
+        # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
+        # print(cipher.decrypt(cipher_text))
+        #cipher.decrypt(cipher_text)
         return cipher_text
 
 
@@ -193,7 +165,7 @@ class Protocol:
     # RETURN AN ERROR MESSAGE IF INTEGRITY VERITIFCATION OR AUTHENTICATION FAILS
     def EncryptAndProtectMessage(self, plain_text):
         cipher_text = plain_text
-        # Only encrypt is session key exists
+        # Only encrypt if message type in payload is defined and INIT or END etc.
         # use if you want 
         # cipher = AES.new(self._shared_key, AES.MODE_CTR, nonce=nonce)
         # cipher.encrypt_and_digest(plain_text)
