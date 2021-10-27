@@ -82,7 +82,6 @@ class Assignment3VPN:
     # Create a TCP connection between the client and the server
     def CreateConnection(self):
         self.prtcl.SetSecret(self.sharedSecret.get())
-        print(self.sharedSecret.get())
         # Change button states
         self._ChangeConnectionMode()
         
@@ -156,22 +155,20 @@ class Assignment3VPN:
 
                 # Checking if the received message is part of your protocol
                 # TODO: MODIFY THE INPUT ARGUMENTS AND LOGIC IF NECESSARY
-                print("about to decode")
                 decoded_message = json.loads(cipher_text.decode())
-                print(decoded_message)
                 if self.prtcl.IsMessagePartOfProtocol(decoded_message):
-                    print("path1")
                     # Disabling the button to prevent repeated clicks
                     self.secureButton["state"] = "disabled"
                     # Processing the protocol message
-                    
-                    next_message = self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
-
-                    if next_message is not None:
+                    try:
+                        next_message = self.prtcl.ProcessReceivedProtocolMessage(decoded_message)
                         print("next_message ", next_message)
-                        print("Right before sending message")
-                        self.conn.send(next_message.encode())
+                        if next_message:
+                            self.conn.send(next_message.encode())
 
+                    except ValueError:
+                        print(ValueError)
+                        
                 # Otherwise, decrypting and showing the message
                 else:
                     plain_text = self.prtcl.DecryptAndVerifyMessage(decoded_message)
@@ -186,7 +183,6 @@ class Assignment3VPN:
     def _SendMessage(self, message):
         plain_text = message
         cipher_text = self.prtcl.EncryptAndProtectMessage(plain_text)
-        print("Right before sending message")
         self.conn.send(cipher_text.encode())
             
 
@@ -197,7 +193,6 @@ class Assignment3VPN:
 
         # TODO: THIS IS WHERE YOU SHOULD IMPLEMENT THE START OF YOUR MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL, MODIFY AS YOU SEEM FIT
         init_message = self.prtcl.GetProtocolInitiationMessage()
-        print("Right before sending message")
         self.conn.send(init_message.encode())
 
 
